@@ -4,12 +4,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle
 import joblib
-import shap
+import warnings
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.linear_model import LogisticRegression
 import os
 
-# 设置页面配置
+# Suppress warnings
+warnings.filterwarnings('ignore')
+
+# Set page configuration
 st.set_page_config(
     page_title="PCNL Post-Operative Fever Prediction Model",
     page_icon="🏥",
@@ -17,7 +20,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 添加CSS样式
+# Add CSS styles
 st.markdown("""
 <style>
     .main {
@@ -44,11 +47,11 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# 显示标题与说明
+# Display title and description
 st.title("PCNL Post-Operative Fever Prediction Model")
 st.markdown("### A machine learning-based tool to predict post-operative fever risk after percutaneous nephrolithotomy")
 
-# 创建侧边栏信息
+# Create sidebar information
 with st.sidebar:
     st.header("About this Model")
     st.info(
@@ -68,18 +71,19 @@ with st.sidebar:
     - **Channel Size**: Size of the nephroscope channel
     """)
 
-# 确保模型文件存在
+# Function to load model
 def load_model():
     try:
-        # 加载模型信息字典
+        # Load model information dictionary
         model_info = joblib.load('LR.pkl')
         return model_info
-    except:
-        # 如果加载失败，显示错误信息
-        st.error("Model file 'LR.pkl' not found. Please ensure the model file is uploaded to the same directory as the application.")
+    except Exception as e:
+        # If loading fails, show error message
+        st.error(f"Model file 'LR.pkl' not found. Error: {str(e)}")
+        st.info("Please ensure the model file is uploaded to the same directory as the application.")
         return None
 
-# 定义特征范围 - 使用您提供的新特征范围
+# Define feature ranges
 feature_ranges = {
     "MayoScore_bin": {"type": "categorical", "options": ["<3", "≥3"], "default": "<3", "description": "Mayo Score"},
     "Diabetes_mellitus": {"type": "categorical", "options": ["No", "Yes"], "default": "No", "description": "Diabetes mellitus"},
@@ -94,23 +98,23 @@ feature_ranges = {
     "Preoperative_M": {"type": "numerical", "min": 0.0, "max": 10.0, "default": 0.6, "description": "Preoperative Monocyte Count (×10^9/L)"}
 }
 
-# 创建用户输入页面布局
+# Create user input page layout
 st.header("Enter Patient Information")
 
-# 使用列布局改善用户界面
+# Use column layout to improve user interface
 col1, col2, col3 = st.columns(3)
 
-# 创建空字典存储特征值
+# Create empty dictionary to store feature values
 input_features = {}
 
-# 将特征分配到列中
+# Assign features to columns
 feature_columns = {
     0: col1,
     1: col2,
     2: col3
 }
 
-# 将特征分组到列中
+# Group features into columns
 i = 0
 for feature, properties in feature_ranges.items():
     col = feature_columns[i % 3]
@@ -132,28 +136,28 @@ for feature, properties in feature_ranges.items():
             )
     i += 1
 
-# 添加分隔线
+# Add separator line
 st.markdown("---")
 
-# 添加预测按钮
+# Add prediction button
 predict_button = st.button("Predict Fever Risk", use_container_width=True)
 
-# 当按钮被点击时进行预测
+# When button is clicked, perform prediction
 if predict_button:
-    # 加载模型
+    # Load model
     model_info = load_model()
     
     if model_info:
-        # 获取分类特征和数值特征列表
+        # Get categorical and numerical feature lists
         categorical_features = [f for f, p in feature_ranges.items() if p["type"] == "categorical"]
         numerical_features = [f for f, p in feature_ranges.items() if p["type"] == "numerical"]
         
-        # 准备数据框
+        # Prepare DataFrame
         input_df = pd.DataFrame([input_features])
         
-        # 处理分类特征 - 根据模型训练方式调整
+        # Process categorical features - adjust according to model training method
         for feature in categorical_features:
-            # 根据新的特征范围调整编码方式
+            # Adjust encoding method according to new feature ranges
             if feature == "MayoScore_bin":
                 input_df[feature] = 1 if input_features[feature] == "≥3" else 0
             elif feature == "Diabetes_mellitus":
@@ -168,25 +172,26 @@ if predict_button:
                 input_df[feature] = 1 if input_features[feature] == "18F" else 0
         
         try:
-            # 标准化数值特征
+            # Standardize numerical features
             X_scaled = input_df.copy()
-            X_scaled[model_info['numerical_features']] = model_info['scaler'].transform(
-                input_df[model_info['numerical_features']]
-            )
+            if 'numerical_features' in model_info and 'scaler' in model_info:
+                X_scaled[model_info['numerical_features']] = model_info['scaler'].transform(
+                    input_df[model_info['numerical_features']]
+                )
             
-            # 进行预测
+            # Make prediction
             predicted_proba = model_info['lr_model'].predict_proba(X_scaled)[0]
-            # 假设模型是二分类，1表示发热
+            # Assume binary classification, 1 indicates fever
             fever_probability = predicted_proba[1] * 100
             
-            # 显示结果
+            # Display results
             st.markdown("## Prediction Results")
             
-            # 创建结果显示区域
+            # Create result display area
             result_col1, result_col2 = st.columns([2, 1])
             
             with result_col1:
-                # 根据概率值显示不同的风险级别
+                # Display different risk levels based on probability values
                 if fever_probability < 25:
                     risk_level = "Low Risk"
                     color = "green"
@@ -207,7 +212,7 @@ if predict_button:
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # 添加结果解释
+                # Add result interpretation
                 st.markdown(f"""
                 ### Result Interpretation
                 - The predicted probability of post-operative fever for this patient is **{fever_probability:.2f}%**
@@ -217,7 +222,7 @@ if predict_button:
                 """)
             
             with result_col2:
-                # 创建简单的概率可视化
+                # Create simple probability visualization
                 fig, ax = plt.subplots(figsize=(4, 4))
                 ax.pie([fever_probability, 100-fever_probability], 
                        labels=["Fever Risk", "No Fever Risk"],
@@ -227,37 +232,37 @@ if predict_button:
                 ax.axis('equal')
                 st.pyplot(fig)
             
-            # 特征重要性分析
+            # Feature importance analysis
             st.markdown("## Feature Impact Analysis")
             st.info("The chart below shows how each feature influences the prediction. Features with positive values (red) increase fever risk, while features with negative values (blue) decrease risk.")
             
             try:
-                # 确认模型是否有系数属性（如逻辑回归模型）
+                # Check if model has coefficient attribute (like logistic regression model)
                 if hasattr(model_info['lr_model'], 'coef_'):
-                    # 创建特征系数的DataFrame
+                    # Create DataFrame of feature coefficients
                     coef_df = pd.DataFrame({
                         'Feature': input_df.columns.tolist(),
                         'Coefficient': model_info['lr_model'].coef_[0]
                     })
                     
-                    # 按照系数绝对值排序，以便展示最重要的特征
+                    # Sort by absolute value of coefficients to show most important features
                     sorted_df = coef_df.reindex(coef_df['Coefficient'].abs().sort_values(ascending=False).index)
                     
-                    # 创建系数条形图
+                    # Create coefficient bar chart
                     fig, ax = plt.subplots(figsize=(10, 8))
                     colors = ['#3498db' if c < 0 else '#e74c3c' for c in sorted_df['Coefficient']]
                     
-                    # 绘制水平条形图
+                    # Draw horizontal bar chart
                     bars = ax.barh(sorted_df['Feature'], sorted_df['Coefficient'], color=colors)
                     
-                    # 添加垂直线表示零点
+                    # Add vertical line representing zero point
                     ax.axvline(x=0, color='gray', linestyle='-', alpha=0.3)
                     
-                    # 设置坐标轴标签和标题
+                    # Set axis labels and title
                     ax.set_xlabel('Impact on Fever Risk', fontsize=12)
                     ax.set_title('Feature Impact on Post-operative Fever Prediction', fontsize=14)
                     
-                    # 为每个条添加数值标签
+                    # Add numerical labels for each bar
                     for bar in bars:
                         width = bar.get_width()
                         label_x_pos = width + 0.01 if width > 0 else width - 0.01
@@ -265,7 +270,7 @@ if predict_button:
                         ax.text(label_x_pos, bar.get_y() + bar.get_height()/2, 
                                 f'{width:.3f}', va='center', ha=label_ha, fontsize=10)
                     
-                    # 添加图例
+                    # Add legend
                     from matplotlib.patches import Patch
                     legend_elements = [
                         Patch(facecolor='#e74c3c', label='Increases Fever Risk'),
@@ -273,11 +278,11 @@ if predict_button:
                     ]
                     ax.legend(handles=legend_elements, loc='lower right')
                     
-                    # 调整布局并显示
+                    # Adjust layout and display
                     plt.tight_layout()
                     st.pyplot(fig)
                     
-                    # 添加特征重要性表格，按照系数绝对值排序
+                    # Add feature importance table, sorted by absolute value of coefficients
                     st.subheader("Feature Importance Table")
                     importance_df = coef_df.copy()
                     importance_df['Absolute Impact'] = np.abs(importance_df['Coefficient'])
@@ -285,13 +290,13 @@ if predict_button:
                     importance_df['Direction'] = importance_df['Coefficient'].apply(
                         lambda x: "Increases Risk" if x > 0 else "Decreases Risk")
                     
-                    # 显示表格
+                    # Display table
                     st.table(importance_df[['Feature', 'Coefficient', 'Direction', 'Absolute Impact']])
                     
-                    # 解释患者的具体风险因素
+                    # Explain patient-specific risk factors
                     st.subheader("Patient-Specific Risk Factors")
                     
-                    # 获取对该患者影响最大的正向和负向因素
+                    # Get the most influential positive and negative factors for this patient
                     top_positive = sorted_df[sorted_df['Coefficient'] > 0].head(3)
                     top_negative = sorted_df[sorted_df['Coefficient'] < 0].head(3)
                     
@@ -329,16 +334,17 @@ if predict_button:
             Possible reasons:
             1. Input data format does not match model expectations
             2. Model file may be corrupted or incompatible
+            3. Model file structure may not match expected format
             """)
 
-# 添加页脚
+# Add footer
 st.markdown("""
 <div class="footer">
     <p>© 2025 PCNL Post-Operative Fever Prediction Model | This tool is for clinical reference only and should not replace professional medical judgment</p>
 </div>
 """, unsafe_allow_html=True)
 
-# 添加"如何使用"折叠面板
+# Add "How to Use" collapsible panel
 with st.expander("How to Use This Tool"):
     st.markdown("""
     1. Enter the patient's clinical parameters in the form above
@@ -360,3 +366,4 @@ with st.expander("How to Use This Tool"):
     - **Urinary Nitrite**: Preoperative urinary nitrite test result (=0 = negative, >0 = positive)
     - **Urine Leukocytes**: Urine leukocyte test result (=0 = negative, >0 = positive)
     """)
+
